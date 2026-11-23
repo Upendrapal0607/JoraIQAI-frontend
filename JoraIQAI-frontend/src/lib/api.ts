@@ -44,14 +44,38 @@ async function request<T>(
   }
 
   if (!response.ok) {
-    const errorMessage =
-      (data && (data.message || data.error)) ||
-      `Request failed with status ${response.status}`;
-    throw new ApiError(
-      Array.isArray(errorMessage) ? errorMessage.join(', ') : errorMessage,
-      response.status,
-      data,
-    );
+    if (response.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('joraiq_token');
+      localStorage.removeItem('joraiq_user');
+    }
+
+    let errorMessage: string = `Request failed with status ${response.status}`;
+    if (data && typeof data === 'object') {
+      if (data.message && typeof data.message === 'string') {
+        errorMessage = data.message;
+      } else if (data.message && Array.isArray(data.message)) {
+        errorMessage = data.message.join(', ');
+      } else if (data.error) {
+        if (typeof data.error === 'string') {
+          errorMessage = data.error;
+        } else if (data.error.message) {
+          errorMessage = Array.isArray(data.error.message)
+            ? data.error.message.join(', ')
+            : String(data.error.message);
+        } else if (data.error.details) {
+          errorMessage = Array.isArray(data.error.details)
+            ? data.error.details.join(', ')
+            : String(data.error.details);
+        }
+      }
+    }
+
+    throw new ApiError(errorMessage, response.status, data);
+  }
+
+  // Unwrap unified API envelope { success: true, status: 200, data: ... }
+  if (data && typeof data === 'object' && data.success === true && 'data' in data) {
+    return data.data as T;
   }
 
   return data as T;

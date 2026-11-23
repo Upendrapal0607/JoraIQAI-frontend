@@ -4,15 +4,13 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { User, Role } from '../types';
 import { api } from '../lib/api';
-import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, role?: Role) => Promise<void>;
   register: (data: { email: string; password: string; name: string; role: Role }) => Promise<void>;
-  quickLogin: (account: 'TEACHER' | 'STUDENT_1' | 'STUDENT_2' | 'STUDENT_3') => Promise<void>;
   logout: () => void;
 }
 
@@ -28,6 +26,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function loadUserFromStorage() {
       const storedToken = localStorage.getItem('joraiq_token');
+      const storedUser = localStorage.getItem('joraiq_user');
+
+      if (storedUser) {
+        try {
+          const parsed = JSON.parse(storedUser);
+          setUser(parsed);
+        } catch {
+          localStorage.removeItem('joraiq_user');
+        }
+      }
+
       if (!storedToken) {
         setIsLoading(false);
         return;
@@ -37,9 +46,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const profile = await api.get<User>('/auth/me');
         setUser(profile);
+        localStorage.setItem('joraiq_user', JSON.stringify(profile));
       } catch (err) {
         console.warn('Session expired or invalid token:', err);
         localStorage.removeItem('joraiq_token');
+        localStorage.removeItem('joraiq_user');
         setUser(null);
         setToken(null);
       } finally {
@@ -50,8 +61,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loadUserFromStorage();
   }, []);
 
+  // Global Route Guard: If user is logged in, redirect away from landing & auth pages to their dashboard
+  useEffect(() => {
+    if (!isLoading && user) {
+      const isPublicLandingOrAuthPage =
+        pathname === '/' || pathname === '/login' || pathname === '/register';
+
+      if (isPublicLandingOrAuthPage) {
+        if (user.role === 'TEACHER') {
+          router.replace('/teacher/dashboard');
+        } else {
+          router.replace('/student/dashboard');
+        }
+      }
+    }
+  }, [user, isLoading, pathname, router]);
+
   const handleAuthSuccess = (userData: User, accessToken: string) => {
     localStorage.setItem('joraiq_token', accessToken);
+    localStorage.setItem('joraiq_user', JSON.stringify(userData));
     setUser(userData);
     setToken(accessToken);
 
@@ -62,33 +90,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, role?: Role) => {
     setIsLoading(true);
     try {
-      // Optional Supabase Auth integration if keys are configured
-      if (supabase) {
-        try {
-          const { data: supaData, error: supaError } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-          });
-          if (!supaError && supaData.session) {
-            const syncRes = await api.post<{ user: User; accessToken: string }>('/auth/supabase-sync', {
-              supabaseUid: supaData.user.id,
-              email: supaData.user.email!,
-              role: supaData.user.user_metadata?.role,
-            });
-            handleAuthSuccess(syncRes.user, syncRes.accessToken);
-            return;
-          }
-        } catch {
-          // Fall back to direct backend auth
-        }
-      }
-
       const res = await api.post<{ user: User; accessToken: string }>('/auth/login', {
         email,
         password,
+        role,
       });
 
       handleAuthSuccess(res.user, res.accessToken);
@@ -105,54 +113,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }) => {
     setIsLoading(true);
     try {
-      let supabaseUid: string | undefined = undefined;
-
-      if (supabase) {
-        try {
-          const { data: supaData } = await supabase.auth.signUp({
-            email: data.email,
-            password: data.password,
-            options: {
-              data: { name: data.name, role: data.role },
-            },
-          });
-          if (supaData.user) {
-            supabaseUid = supaData.user.id;
-          }
-        } catch {
-          // Continue with backend registration
-        }
-      }
-
-      const res = await api.post<{ user: User; accessToken: string }>('/auth/register', {
-        ...data,
-        supabaseUid,
-      });
-
+      const res = await api.post<{ user: User; accessToken: string }>('/auth/register', data);
       handleAuthSuccess(res.user, res.accessToken);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const quickLogin = async (account: 'TEACHER' | 'STUDENT_1' | 'STUDENT_2' | 'STUDENT_3') => {
-    const creds = {
-      TEACHER: { email: 'teacher@joraiq.ai', password: 'password123' },
-      STUDENT_1: { email: 'student1@joraiq.ai', password: 'password123' },
-      STUDENT_2: { email: 'student2@joraiq.ai', password: 'password123' },
-      STUDENT_3: { email: 'student3@joraiq.ai', password: 'password123' },
-    }[account];
-
-    await login(creds.email, creds.password);
-  };
-
   const logout = () => {
     localStorage.removeItem('joraiq_token');
+    localStorage.removeItem('joraiq_user');
     setUser(null);
     setToken(null);
-    if (supabase) {
-      supabase.auth.signOut().catch(() => {});
-    }
     router.push('/login');
   };
 
@@ -164,7 +136,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         login,
         register,
-        quickLogin,
         logout,
       }}
     >

@@ -60,7 +60,7 @@ export default function QuizResultPage() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-20 text-center">
         <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-xs text-slate-500">Loading your graded evaluation...</p>
+        <p className="text-xs text-slate-500">Loading your quiz results...</p>
       </div>
     );
   }
@@ -93,7 +93,7 @@ export default function QuizResultPage() {
         </div>
 
         <div className="space-y-1">
-          <Badge variant="success">Assessment Completed</Badge>
+          <Badge variant="success">Quiz Completed</Badge>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight pt-2">
             {attempt.quizTitle}
           </h1>

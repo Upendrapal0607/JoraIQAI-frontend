@@ -103,7 +103,7 @@ export default function QuizAttemptPage() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-20 text-center">
         <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-xs text-slate-500 font-medium">Preparing your assessment...</p>
+        <p className="text-xs text-slate-500 font-medium">Preparing your quiz questions...</p>
       </div>
     );
   }
@@ -253,7 +253,7 @@ export default function QuizAttemptPage() {
               className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-500/25 transition flex items-center gap-1.5"
             >
               <Send className="w-4 h-4" />
-              <span>Submit Assessment</span>
+              <span>Submit Quiz</span>
             </button>
           )}
         </div>

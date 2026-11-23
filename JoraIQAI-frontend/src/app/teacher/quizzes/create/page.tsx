@@ -34,6 +34,10 @@ export default function CreateQuizPage() {
       ],
     },
   ]);
+  const [titleError, setTitleError] = useState<string | null>(null);
+  const [questionErrors, setQuestionErrors] = useState<
+    Record<number, { text?: string; options?: Record<number, string> }>
+  >({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -58,18 +62,36 @@ export default function CreateQuizPage() {
       return;
     }
     setQuestions(questions.filter((_, idx) => idx !== qIndex));
+    const updatedErrors = { ...questionErrors };
+    delete updatedErrors[qIndex];
+    setQuestionErrors(updatedErrors);
   };
 
   const updateQuestionText = (qIndex: number, text: string) => {
     const updated = [...questions];
     updated[qIndex].text = text;
     setQuestions(updated);
+    if (questionErrors[qIndex]?.text) {
+      setQuestionErrors((prev) => ({
+        ...prev,
+        [qIndex]: { ...prev[qIndex], text: undefined },
+      }));
+    }
   };
 
   const updateOptionText = (qIndex: number, optIndex: number, text: string) => {
     const updated = [...questions];
     updated[qIndex].options[optIndex].text = text;
     setQuestions(updated);
+    if (questionErrors[qIndex]?.options?.[optIndex]) {
+      setQuestionErrors((prev) => ({
+        ...prev,
+        [qIndex]: {
+          ...prev[qIndex],
+          options: { ...prev[qIndex]?.options, [optIndex]: undefined },
+        },
+      }));
+    }
   };
 
   const setCorrectOption = (qIndex: number, optIndex: number) => {
@@ -81,33 +103,62 @@ export default function CreateQuizPage() {
     setQuestions(updated);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const validate = () => {
+    let isValid = true;
     setError(null);
 
-    // Validation
+    // Validate title
     if (!title.trim()) {
-      setError('Quiz title is required.');
-      return;
+      setTitleError('Quiz title is required.');
+      isValid = false;
+    } else {
+      setTitleError(null);
     }
+
+    // Validate questions and options
+    const newQErrors: Record<number, { text?: string; options?: Record<number, string> }> = {};
 
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
+      const qErr: { text?: string; options?: Record<number, string> } = {};
+
       if (!q.text.trim()) {
-        setError(`Question #${i + 1} text cannot be empty.`);
-        return;
+        qErr.text = 'Question statement is required.';
+        isValid = false;
       }
+
+      const optErrors: Record<number, string> = {};
       for (let j = 0; j < q.options.length; j++) {
         if (!q.options[j].text.trim()) {
-          setError(`Option ${String.fromCharCode(65 + j)} for Question #${i + 1} cannot be empty.`);
-          return;
+          optErrors[j] = `Option ${String.fromCharCode(65 + j)} text is required.`;
+          isValid = false;
         }
       }
+
+      if (Object.keys(optErrors).length > 0) {
+        qErr.options = optErrors;
+      }
+
       const correctCount = q.options.filter((o) => o.isCorrect).length;
       if (correctCount !== 1) {
         setError(`Question #${i + 1} must have exactly one correct option selected.`);
-        return;
+        isValid = false;
       }
+
+      if (qErr.text || qErr.options) {
+        newQErrors[i] = qErr;
+      }
+    }
+
+    setQuestionErrors(newQErrors);
+    return isValid;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!validate()) {
+      return;
     }
 
     setIsSubmitting(true);
@@ -139,7 +190,7 @@ export default function CreateQuizPage() {
           </Link>
           <div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-              Create New Assessment
+              Create New Quiz
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
               Draft questions, provide 4 answer options, and mark the correct key.
@@ -149,28 +200,41 @@ export default function CreateQuizPage() {
       </div>
 
       {error && (
-        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2.5">
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2.5 animate-shake">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Form with noValidate to prevent native browser hover bubbles */}
+      <form onSubmit={handleSubmit} noValidate className="space-y-6">
         {/* Basic Info Card */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <h2 className="text-sm font-bold text-slate-900">Quiz Overview</h2>
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Quiz Title <span className="text-rose-500">*</span>
+              Quiz Title <span className="text-rose-500 font-bold">*</span>
             </label>
             <input
               type="text"
-              required
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                if (titleError) setTitleError(null);
+              }}
               placeholder="e.g. Distributed Systems & Database Isolation Levels"
-              className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition"
+              className={`w-full px-3.5 py-2.5 text-xs rounded-xl border transition focus:outline-none focus:ring-2 ${
+                titleError
+                  ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500/20 bg-rose-50/20'
+                  : 'border-slate-200 focus:border-indigo-600 focus:ring-indigo-500/20'
+              }`}
             />
+            {titleError && (
+              <p className="text-[11px] text-rose-600 font-medium mt-1.5 flex items-center gap-1 animate-slide-up">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{titleError}</span>
+              </p>
+            )}
           </div>
 
           <div>
@@ -227,60 +291,84 @@ export default function CreateQuizPage() {
               </div>
 
               <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Question Statement <span className="text-rose-500 font-bold">*</span>
+                </label>
                 <input
                   type="text"
-                  required
                   value={q.text}
                   onChange={(e) => updateQuestionText(qIdx, e.target.value)}
                   placeholder="Type your question statement here..."
-                  className="w-full px-3.5 py-2.5 text-xs font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition"
+                  className={`w-full px-3.5 py-2.5 text-xs font-medium rounded-xl border transition focus:outline-none focus:ring-2 ${
+                    questionErrors[qIdx]?.text
+                      ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500/20 bg-rose-50/20'
+                      : 'border-slate-200 focus:border-indigo-600 focus:ring-indigo-500/20'
+                  }`}
                 />
+                {questionErrors[qIdx]?.text && (
+                  <p className="text-[11px] text-rose-600 font-medium mt-1.5 flex items-center gap-1 animate-slide-up">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{questionErrors[qIdx]?.text}</span>
+                  </p>
+                )}
               </div>
 
               {/* 4 Options Grid */}
               <div className="space-y-2 pt-2">
-                <p className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
+                <p className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5 text-indigo-500" />
-                  Answer Options (Click radio button to select the correct answer)
+                  Answer Choices (Select radio button for the correct key){' '}
+                  <span className="text-rose-500 font-bold">*</span>
                 </p>
 
                 <div className="grid grid-cols-1 gap-2.5">
                   {q.options.map((opt, optIdx) => {
                     const letter = String.fromCharCode(65 + optIdx);
+                    const hasOptError = !!questionErrors[qIdx]?.options?.[optIdx];
+
                     return (
-                      <div
-                        key={optIdx}
-                        className={`flex items-center gap-3 p-2.5 rounded-xl border transition ${
-                          opt.isCorrect
-                            ? 'border-emerald-500 bg-emerald-50/50'
-                            : 'border-slate-200 bg-slate-50/50 focus-within:border-indigo-400 focus-within:bg-white'
-                        }`}
-                      >
-                        <label className="flex items-center cursor-pointer pl-1">
+                      <div key={optIdx} className="space-y-1">
+                        <div
+                          className={`flex items-center gap-3 p-2.5 rounded-xl border transition ${
+                            hasOptError
+                              ? 'border-rose-300 bg-rose-50/30'
+                              : opt.isCorrect
+                              ? 'border-emerald-500 bg-emerald-50/50'
+                              : 'border-slate-200 bg-slate-50/50 focus-within:border-indigo-400 focus-within:bg-white'
+                          }`}
+                        >
+                          <label className="flex items-center cursor-pointer pl-1">
+                            <input
+                              type="radio"
+                              name={`correct-q-${qIdx}`}
+                              checked={opt.isCorrect}
+                              onChange={() => setCorrectOption(qIdx, optIdx)}
+                              className="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                            />
+                          </label>
+
+                          <span className="text-xs font-black text-slate-400 w-4">{letter}.</span>
+
                           <input
-                            type="radio"
-                            name={`correct-q-${qIdx}`}
-                            checked={opt.isCorrect}
-                            onChange={() => setCorrectOption(qIdx, optIdx)}
-                            className="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                            type="text"
+                            value={opt.text}
+                            onChange={(e) => updateOptionText(qIdx, optIdx, e.target.value)}
+                            placeholder={`Enter Option ${letter} text`}
+                            className="flex-1 bg-transparent border-none text-xs focus:outline-none text-slate-800 placeholder-slate-400"
                           />
-                        </label>
 
-                        <span className="text-xs font-black text-slate-400 w-4">{letter}.</span>
+                          {opt.isCorrect && (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full mr-1">
+                              Correct Key
+                            </span>
+                          )}
+                        </div>
 
-                        <input
-                          type="text"
-                          required
-                          value={opt.text}
-                          onChange={(e) => updateOptionText(qIdx, optIdx, e.target.value)}
-                          placeholder={`Option ${letter}`}
-                          className="flex-1 bg-transparent border-none text-xs focus:outline-none text-slate-800 placeholder-slate-400"
-                        />
-
-                        {opt.isCorrect && (
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full mr-1">
-                            Correct Key
-                          </span>
+                        {hasOptError && (
+                          <p className="text-[11px] text-rose-600 font-medium pl-2 flex items-center gap-1 animate-slide-up">
+                            <AlertCircle className="w-3 h-3 shrink-0" />
+                            <span>{questionErrors[qIdx]?.options?.[optIdx]}</span>
+                          </p>
                         )}
                       </div>
                     );
@@ -303,16 +391,10 @@ export default function CreateQuizPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition flex items-center gap-2"
+            className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition flex items-center gap-2"
           >
-            {isSubmitting ? (
-              <span>Saving Quiz...</span>
-            ) : (
-              <>
-                <span>Save Quiz & Proceed to Assignment</span>
-                <CheckCircle2 className="w-4 h-4" />
-              </>
-            )}
+            <Sparkles className="w-4 h-4" />
+            <span>{isSubmitting ? 'Creating Quiz...' : 'Create & Assign Students'}</span>
           </button>
         </div>
       </form>
